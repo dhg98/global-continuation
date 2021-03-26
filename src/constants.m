@@ -4,8 +4,6 @@ N = 1000;
 L = 1;
 % Step of the net
 h = L / N;
-h_square = h * h;
-inverse_h_square = 1 / h_square;
 
 % Net points
 t_i = 0:h:L;
@@ -15,7 +13,7 @@ epsilon = 1 / 100;
 num_iter = 20;
 
 % Maximum lambda that we are going to evaluate
-MAX_LAMBDA = 50;
+MAX_LAMBDA = 100;
 lambda_h = 1/100;
 
 % Function a, the parameter

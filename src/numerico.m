@@ -1,49 +1,7 @@
 % Load all the constants
 constants;
 
-% Obtain M (-u'' approximate)
-M = generate_M(N + 1, inverse_h_square);
-
-% Differential equation is transformed to algebraic equation
-F = @(lambda, x) -lambda * x + diag(a_eval) * x.^3 + M * x;
-
-% First eigenvalues that are limited by the MAX_LAMBDA constant
-eig = generate_eigenvalues_limited(inverse_h_square, N, MAX_LAMBDA);
-%bifurcation_points = 1;%size(eig, 2);
-
-% u and bifurcation_values are uninitialized, so we need to clear them 
-% before starting the loop
-clear u;
-clear bifurcation_values;
-
-% Generate solutions for bifurcation branches from the bifurcation point in
-% our range (0, MAX_LAMBDA)
-for i = 1:size(eig, 2)
-    % Initialize this iteration using crandall-rabinowitz theorem
-    [u_0, lambda] = initialize_crandall_rabinowitz(i, L, h, t_i, a, eig(i), lambda_h);
-    
-    % Net for lambda
-    lambdas = [eig(i) lambda:lambda_h:MAX_LAMBDA];
-    % Zero solution is the first
-    u_j = zeros(size(lambdas,2), N + 1);
-    for j = 2:size(lambdas, 2)
-        % The function we want to obtain the zeroes from is F but with a 
-        % fixed lambda
-        f = @(x) F(lambdas(j), x);
-        jacobian_u_0 = M - lambdas(j) * eye(N + 1) + 3 * diag((diag(a_eval) * u_0.^2));
-        [nu, ~, iters] = newton_modified_method(f, jacobian_u_0, u_0, epsilon, num_iter);
-        % Next u_0 is from where we finished in our last iteration
-        u_0 = nu;
-        u_j(j,:) = nu;
-        %plot(t_i, nu, colours(mod(j, size(colours, 2)) + 1));
-        %hold on;
-    end
-    %hold off;
-    u{i} = u_j;
-    bifurcation_values{i,1} = lambdas;
-    bifurcation_values{i,2} = max(u{i},[],2);
-    % create_bifurcation_branch(squeeze(u(i,:,:)), lambdas, 'r');
-end
+[u, bifurcation_values] = compute_solutions(h, N, L, t_i, a, a_eval, MAX_LAMBDA, lambda_h, epsilon, num_iter);
 create_bifurcation_diagram(bifurcation_values, colours);
 
 function [M] = generate_M(n, inverse_h_square)
@@ -154,4 +112,71 @@ function [u_0, lambda] = initialize_crandall_rabinowitz(i, L, h, t_i, a, eig, la
     lambda = eig + s^2 * lambda_2;
     % Generate initial u_0 (s * phi_0) (column)
     u_0 = generate_s_phi_0(i, L, t_i, s);
+end
+
+function [u, bifurcation_values] = compute_solutions(h, N, L, t_i, a, a_eval, limit_lambda, lambda_h, epsilon, num_iter)
+% compute_solutions function obtains all the solutions for the problem that
+% we are studying
+% INPUT:
+%   - h: step of the net
+%   - N: number of subintervals
+%   - L: upper limit of the interval
+%   - t_i: points of the net
+%   - a: problem parameter
+%   - a_eval: discrete evaluation of a in t_i
+%   - limit_lambda: maximum lambda for which we are going to obtain the
+%           solutions
+%   - lambda_h: step of lambda
+%   - epsilon: maximum admisible error for the Newton method
+%   - num_iter: maximum number of iterations for the Newton method before
+%           considering that the method has diverged
+% OUTPUT:
+%   - u: computed solutions of diferent number of nodes. It is a cell-array
+%           that contains, for each eigenvalue of the problem, a matrix, 
+%           inside which, for every row, we have the values of the function 
+%           evaluated in t_i
+%   - bifurcation_values: maximum of each u, along the lambda for which
+%           that function was obtained. It is a cell array that contains,
+%           for each row, on the first position the values of lambda and on
+%           the second position the maximum of each solution
+
+    % 1 / h^2
+    inverse_h_square = 1 / (h * h);
+
+    % Obtain M (-u'' approximate)
+    M = generate_M(N + 1, inverse_h_square);
+
+    % Differential equation is transformed to algebraic equation
+    F = @(lambda, x) -lambda * x + diag(a_eval) * x.^3 + M * x;
+    
+    % First eigenvalues that are limited by the MAX_LAMBDA constant
+    eig = generate_eigenvalues_limited(inverse_h_square, N, limit_lambda);
+    
+    % Generate solutions for bifurcation branches from the bifurcation point in
+    % our range (0, MAX_LAMBDA)
+    for i = 1:size(eig, 2)
+        % Initialize this iteration using crandall-rabinowitz theorem
+        [u_0, lambda] = initialize_crandall_rabinowitz(i, L, h, t_i, a, eig(i), lambda_h);
+
+        % Net for lambda
+        lambdas = [eig(i) lambda:lambda_h:limit_lambda];
+        % Zero solution is the first
+        u_j = zeros(size(lambdas,2), N + 1);
+        for j = 2:size(lambdas, 2)
+            % The function we want to obtain the zeroes from is F but with a 
+            % fixed lambda
+            f = @(x) F(lambdas(j), x);
+            jacobian_u_0 = M - lambdas(j) * eye(N + 1) + 3 * diag((diag(a_eval) * u_0.^2));
+            [nu, ~, ~] = newton_modified_method(f, jacobian_u_0, u_0, epsilon, num_iter);
+            % Next u_0 is from where we finished in our last iteration
+            u_0 = nu;
+            u_j(j,:) = nu;
+            %plot(t_i, nu, colours(mod(j, size(colours, 2)) + 1));
+            %hold on;
+        end
+        %hold off;
+        u{i} = u_j;
+        bifurcation_values{i,1} = lambdas;
+        bifurcation_values{i,2} = max(u{i},[],2);
+    end
 end
