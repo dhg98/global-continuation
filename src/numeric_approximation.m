@@ -2,7 +2,12 @@
 constants;
 
 [u, bifurcation_values] = compute_solutions(h, N, L, t_i, a, a_eval, MAX_LAMBDA, lambda_h, epsilon, num_iter);
-create_bifurcation_diagram(bifurcation_values, colours);
+
+% Generate the bifurcation diagram
+create_bifurcation_diagram(bifurcation_values, colours, 1);
+
+% Generate the plot for the solutions
+display_solutions(t_i, u, colours, NUMBER_SOLUTIONS, 2);
 
 function [M] = generate_M(n, inverse_h_square)
 % generateM generates the finite differences matrix of -u''
@@ -70,18 +75,91 @@ function [s_phi_0] = generate_s_phi_0(n, L, t_i, s)
     s_phi_0 = (s .* f(t_i)).';
 end
 
-function create_bifurcation_diagram(bifurcation_values, colours)
+function [solutions_to_plot] = get_functions_to_plot(solutions, number_solutions)
+% get_functions_to_plot function gets equally spaced functions from a range
+% of solutions
+% INPUT: 
+%   - solutions: complete range of solutions
+%   - number_solutions: maximum number of solutions that we want to select
+% OUTPUT:
+%   - solutions_to_plot: selected solutions
+    step = (size(solutions, 1) - 1) / number_solutions;
+    indexes = floor(1:step:size(solutions, 1) - 1);
+    solutions_to_plot = zeros(number_solutions, size(solutions, 2));
+    for i=1:number_solutions
+        solutions_to_plot(i, :) = solutions(indexes(i),:);
+    end
+end
+
+function display_solutions(t_i, solutions, colours, number_solutions, index)
+% display_solutions function plots all the desired solutions in the same
+% figure
+% INPUT:
+%   - t_i: points of the net
+%   - solutions: all the solutions that the algorithm has obtained
+%   - colours: all the available colours to select for the plots
+%   - number_solutions: maximum number of solutions per eigenvalue
+%   - index: number of the figure we want to plot
+    number_rows = ceil(size(solutions, 2) / 2);
+    figure(index);
+    for i = 1:number_rows
+        for j = 1:2
+            % When there aren't more solutions to plot
+            if 2 * (i - 1) + j > size(solutions, 2)
+                break;
+            end
+            solutions_to_plot = get_functions_to_plot(solutions{1, 2 * (i - 1) + j}, number_solutions);
+            % Create the subplot
+            for k = 1:size(solutions_to_plot, 1)
+                subplot(number_rows, 2, 2 * (i - 1) + j);
+                plot(t_i, solutions_to_plot(k,:), colours(mod(k, size(colours, 2)) + 1))
+                if 2 * (i - 1) + j == 1 % Positive solution
+                    title('Soluciones positivas');
+                elseif 2 * (i - 1) + j == 2 % 1 node solution (exclude s - plural)
+                    title(sprintf('Soluciones con %d nodo', 2 * (i - 1) + j - 1));
+                else
+                    title(sprintf('Soluciones con %d nodos', 2 * (i - 1) + j - 1));
+                end
+                hold on;
+            end
+            hold off;
+        end    
+    end
+end
+
+function create_bifurcation_diagram(bifurcation_values, colours, index)
 % create_bifurcation_diagram plots the global bifurcation diagram for the
 % given solutions and lambdas
 % INPUT:
 %   - bifurcation_values: cell that contains for every row (eigenvalue), 
 %           the lambdas in which we have obtained the solutions and their 
 %           maximum values
+%   - colours: all the available colours to select for the plots
+%   - index: number of the figure we want to plot
+    figure(index);
     for i = 1:size(bifurcation_values, 1)
-        plot(bifurcation_values{i, 1}, bifurcation_values{i, 2}, colours(mod(i, size(colours, 2)) + 1));
+        colour = colours(mod(i, size(colours, 2)) + 1);
+        plot(bifurcation_values{i, 1}, bifurcation_values{i, 2}, colour);
+        hold on;
+        % Simmetric branch
+        plot(bifurcation_values{i,1}, (-1).* bifurcation_values{i, 2}, colour);
         hold on;
     end
-    title("Diagrama de bifurcación global");
+    
+    % Configuration of the plot
+    t = title("Diagrama de bifurcación global");
+    % Locate both axis at the origin
+    ax = gca;
+    ax.XAxisLocation = 'origin';
+    % Add x label and position it at the x-axis
+    xlh = xlabel('\lambda');
+    xlh.Position(2) = 0;
+    
+    % Add y label and position it at the top, without 90º rotation
+    ylh = ylabel('||u||_\infty');
+    ylh.Position(2) = t.Position(2)*1.02;
+    ylh.Rotation = 0;
+    
     hold off;
 end
 

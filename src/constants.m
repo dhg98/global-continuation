@@ -1,5 +1,5 @@
 % Number of subintervals that we are going to create
-N = 1000;
+N = 3000;
 % Upper limit of the interval ([0,L])
 L = 1;
 % Step of the net
@@ -13,8 +13,12 @@ epsilon = 1 / 100;
 num_iter = 20;
 
 % Maximum lambda that we are going to evaluate
-MAX_LAMBDA = 100;
+MAX_LAMBDA = 180;
 lambda_h = 1/100;
+
+% Number of solutions that we are going to show in the same figure (the
+% more, the less visible
+NUMBER_SOLUTIONS = 10;
 
 % Function a, the parameter
 a = @(t)1;
