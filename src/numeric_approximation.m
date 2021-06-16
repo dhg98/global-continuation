@@ -22,7 +22,7 @@ for i = 1:size(eig,2)
         bifurcation_values{i, 1} = [];
         bifurcation_values{i, 2} = [];
     end
-    if size(u{i}, 1) == 0
+    if size(u{1, i}, 1) == 0
         % Eigen value i doesn't have its solutions loaded
         [u_aux, bif_aux, err] = load_solutions_eigenvalue(degenerate, i);
         u{i} = u_aux;
@@ -38,16 +38,19 @@ end
 % There are files with errors. We need to compute the solutions
 if size(err_indexes, 2) > 0
     % Obtain M (-u'' approximate)
-    M = generate_M(N + 1, inverse_h_square);
+    M = generate_M(N, inverse_h_square);
 
     % Differential equation is transformed to algebraic equation
     F = @(lambda, x) -lambda * x + diag(a_eval) * x.^3 + M * x;
     
     for i = 1:size(err_indexes, 2)
-        [u_aux, bif_aux] = compute_branch(h, N, L, t_i, a, a_eval, i, eig(i), lambda_h_slow, lambda_h_fast, low_limit_interval, upper_limit_interval, epsilon, num_iter, maximum_anulation, minimum_anulation, degenerate, err_indexes);
-        u{i} = u_aux;
-        bifurcation_values{i, 1} = bif_aux{1};
-        bifurcation_values{i, 2} = bif_aux{2};
+        [u_aux, bif_aux] = compute_branch(M, F, h, N, L, t_i, a, a_eval,...
+            err_indexes(i), eig(err_indexes(i)), lambda_h, ...
+            limit_interval, big_epsilon, small_epsilon, num_iter, ...
+            maximum_anulation, minimum_anulation, MAX_LAMBDA, degenerate);
+        u{err_indexes(i)} = u_aux;
+        bifurcation_values{err_indexes(i), 1} = bif_aux{1};
+        bifurcation_values{err_indexes(i), 2} = bif_aux{2};
         clear u_aux  bif_aux;
     end
     clear F M inverse_h_square eig;
@@ -88,21 +91,22 @@ function [eig] = generate_ith_eigenvalue(i, inverse_h_square, sizeM)
     eig = 2 * inverse_h_square * (1 - cos((i * pi)/ (sizeM + 1)));
 end
 
-function [eigs] = generate_eigenvalues_limited(inverse_h_square, N, limit_lambda)
+function [eigs] = generate_eigenvalues_limited(inverse_h_square, ...
+    n, limit_lambda)
 % generate_eigenvalues_limited obtains the first eigenvalues based on a 
 % limit on lambda (that is, we get all the eigenvalues that are under that
 % limit. In order to do so, we will use that M is Toeplitz
 % INPUT:
 %   - inverse_h_square: inverse of the square of the net step
-%   - N: number of subintervals
+%   - n: size of M
 %   - limit_lambda: maximum lambda that we want to explore
 % OUTPUT:
 %   - eigs: approximate eigenvalues that are less than limit_lambda
 
     i = 1;
     while 1
-        eigenvalue = generate_ith_eigenvalue(i, inverse_h_square, N + 1);
-        if eigenvalue >= limit_lambda || i == N + 2
+        eigenvalue = generate_ith_eigenvalue(i, inverse_h_square, n);
+        if eigenvalue >= limit_lambda || i == n + 1
             break;
         end
         eigs(i) = eigenvalue;
@@ -125,7 +129,8 @@ function [s_phi_0] = generate_s_phi_0(n, L, t_i, s)
     s_phi_0 = (s .* f(t_i)).';
 end
 
-function [solutions_to_plot] = get_functions_to_plot(solutions, number_solutions)
+function [solutions_to_plot] = get_functions_to_plot(solutions, ...
+    number_solutions)
 % get_functions_to_plot function gets equally spaced functions from a range
 % of solutions
 % INPUT: 
@@ -133,11 +138,24 @@ function [solutions_to_plot] = get_functions_to_plot(solutions, number_solutions
 %   - number_solutions: maximum number of solutions that we want to select
 % OUTPUT:
 %   - solutions_to_plot: selected solutions
-    step = (size(solutions, 1) - 1) / number_solutions;
-    indexes = floor(1:step:size(solutions, 1) - 1);
+    maximums = max(solutions, [], 2).';
+    minimum = maximums(1);
+    maximum = maximums(size(maximums, 2));
+    step = (maximum + minimum) / (number_solutions - 1);
     solutions_to_plot = zeros(number_solutions, size(solutions, 2));
-    for i=1:number_solutions
-        solutions_to_plot(i, :) = solutions(indexes(i),:);
+    
+    i = 0;
+    while 1
+        [found, pos] = binary_search(maximums, i * step);
+        if found
+            solutions_to_plot(i + 1, :) = solutions(pos, :);
+        else
+            solutions_to_plot(i + 1, :) = solutions(pos - 1, :);
+        end
+        i = i + 1;
+        if i > number_solutions
+            break;
+        end
     end
 end
 
@@ -158,17 +176,22 @@ function display_solutions(t_i, solutions, colours, number_solutions, index)
             if 2 * (i - 1) + j > size(solutions, 2)
                 break;
             end
-            solutions_to_plot = get_functions_to_plot(solutions{1, 2 * (i - 1) + j}, number_solutions);
+            solutions_to_plot = ...
+                get_functions_to_plot(solutions{1, 2 * (i - 1) + j}, ...
+                    number_solutions);
             % Create the subplot
             for k = 1:size(solutions_to_plot, 1)
                 subplot(number_rows, 2, 2 * (i - 1) + j);
-                plot(t_i, solutions_to_plot(k,:), colours(mod(k, size(colours, 2)) + 1))
+                plot(t_i, solutions_to_plot(k,:), ...
+                    colours(mod(k, size(colours, 2)) + 1))
                 if 2 * (i - 1) + j == 1 % Positive solution
                     title('Soluciones positivas');
-                elseif 2 * (i - 1) + j == 2 % 1 node solution (exclude s - plural)
-                    title(sprintf('Soluciones con %d nodo', 2 * (i - 1) + j - 1));
+                elseif 2 * (i - 1) + j == 2 % 1 node solution (exclude s)
+                    title(sprintf('Soluciones con %d nodo', ...
+                        2 * (i - 1) + j - 1));
                 else
-                    title(sprintf('Soluciones con %d nodos', 2 * (i - 1) + j - 1));
+                    title(sprintf('Soluciones con %d nodos', ... 
+                        2 * (i - 1) + j - 1));
                 end
                 hold on;
             end
@@ -192,8 +215,10 @@ function create_bifurcation_diagram(bifurcation_values, colours, index)
         plot(bifurcation_values{i, 1}, bifurcation_values{i, 2}, colour);
         hold on;
         % Simmetric branch
-        plot(bifurcation_values{i,1}, (-1).* bifurcation_values{i, 2}, colour);
-        leg{i} = sprintf("Bifurcación desde autovalor %0.5f", bifurcation_values{i, 1}(1));
+        plot(bifurcation_values{i,1}, (-1).* bifurcation_values{i, 2}, ...
+            colour);
+        leg{i} = sprintf("Bifurcación desde autovalor %0.5f", ... 
+            bifurcation_values{i, 1}(1));
         hold on;
     end
     legend(leg);
@@ -214,10 +239,11 @@ function create_bifurcation_diagram(bifurcation_values, colours, index)
     hold off;
 end
 
-function [u_0, lambda] = initialize_crandall_rabinowitz(i, L, h, t_i, a, eig, lambda_h)
+function [u_0, lambda] = initialize_crandall_rabinowitz(i, L, h, t_i, a,... 
+    eig, lambda_h)
 % initialize_crandall function initializes the approximate method for
 % the i-th eigenvalue (branch that will start at this eigenvalue) using the
-% Crandall-Rabinwitzt theorem
+% Crandall-Rabinwitz theorem
 % INPUT:
 %   - i: iteration
 %   - L: upper limit
@@ -235,20 +261,25 @@ function [u_0, lambda] = initialize_crandall_rabinowitz(i, L, h, t_i, a, eig, la
     % Calculation of lambda_2
     phi_a = @(t) a(t) .* (sin(i .* pi .* t ./ L)).^4;
     lambda_2 = trapezoid_integration(phi_a, t_i, h) * 2 / L;
-    % Value of the parameter that we get from the Crandall-Rabinowitz theorem
+    % Value of the parameter that we get from the Crandall-Rabinowitz
+    % theorem
     s = sqrt(((i * pi / L)^2 + lambda_h - eig) / lambda_2);
     % Generate initial lambda
     lambda = eig + s^2 * lambda_2;
     % Generate initial u_0 (s * phi_0) (column)
     u_0 = generate_s_phi_0(i, L, t_i, s);
+    u_0(1) = [];
+    u_0(end) = [];
 end
 
-function [u, bifurcation_values] = compute_branch(h, N, L, t_i, a, a_eval, i, eig, lambda_h_slow, lambda_h_fast, low_limit_interval, upper_limit_interval, epsilon, num_iter, maximum_anulation, minimum_anulation, degenerate)
+function [u, bifurcation_values] = compute_branch(M, F, h, N, L, t_i, a,...
+    a_eval, i, eig, lambda_h, limit_interval, big_epsilon, small_epsilon,...
+    num_iter, maximum_anulation, minimum_anulation, MAX_LAMBDA, degenerate)
 % compute_branch function obtains all the solutions for the problem that
 % we are studying for a specific eigenvalue branch
 % INPUT:
 %   - h: step of the net
-%   - N: number of subintervals
+%   - N: number of subintervals less 1
 %   - L: upper limit of the interval
 %   - t_i: points of the net
 %   - a: problem parameter
@@ -265,50 +296,78 @@ function [u, bifurcation_values] = compute_branch(h, N, L, t_i, a, a_eval, i, ei
 %       degenerate cases)
 %   - maximum_anulation: upper limit interval of anulation of a (for
 %       degenerate cases)
-%   - epsilon: maximum admisible error for the Newton method
+%   - big_epsilon: maximum admisible error for the Newton method in
+%           specific interval
+%   - small_epsilon: maximum admisible error for the Newton method in
+%           specific interval
 %   - num_iter: maximum number of iterations for the Newton method before
 %           considering that the method has diverged
 % OUTPUT:
-%   - u: computed solutions of diferent number of nodes. It is a cell-array
-%           that contains, for each eigenvalue of the problem, a matrix, 
-%           inside which, for every row, we have the values of the function 
-%           evaluated in t_i
+%   - u: computed solutions. It is a matriz that contains, for each row, 
+%           the values of the function evaluated in t_i
 %   - bifurcation_values: maximum of each u, along the lambda for which
 %           that function was obtained. It is a cell array that contains,
-%           for each row, on the first position the values of lambda and on
-%           the second position the maximum of each solution
+%           on the first position the values of lambda and on the second 
+%           position the maximum of each solution
+    lambda_h_init = lambda_h(1);
+    lambda_h_init_fast = lambda_h(2);
+    lambda_h_med = lambda_h(3);
+    lambda_h_end = lambda_h(4);
     
-    lambda_step = lambda_h_slow;
+    low_limit_interval = limit_interval(1);
+    med_limit_interval = limit_interval(2);
+    upper_limit_interval = limit_interval(3);
+    
+    lambda_step = lambda_h_init;
+    epsilon = big_epsilon;
     % Initialize this iteration using crandall-rabinowitz theorem
-    [u_0, lambda] = initialize_crandall_rabinowitz(i, L, h, t_i, a, eig, lambda_step);
+    [u_0, lambda] = initialize_crandall_rabinowitz(i, L, h, t_i, a, eig,...
+        lambda_step);
     % Net for lambda
     lambdas = [eig, lambda];
     j = 2;
     % Zero solution is the first
-    u_j = zeros(1, N + 1);
-    max_lambda_value = (i * pi / (maximum_anulation-minimum_anulation))^2;
+    u = zeros(1, N + 2);
+    if (degenerate) 
+        max_lambda_value = (i * pi / (maximum_anulation-minimum_anulation))^2;
+    else
+        max_lambda_value = MAX_LAMBDA;
+    end
     while 1
         % The function we want to obtain the zeroes from is F but with a 
         % fixed lambda
         f = @(x) F(lambdas(j), x);
-        jacobian_u_0 = M - lambdas(j) * eye(N + 1) + 3 * diag((diag(a_eval) * u_0.^2));
-        [nu, ~, iters] = newton_modified_method(f, jacobian_u_0, u_0, epsilon, num_iter);
+        jacobian_u_0 = ...
+            M - lambdas(j) * eye(N) + 3 * diag((diag(a_eval) * u_0.^2));
+        [nu, ~, iters] = ...
+            newton_modified_method(f, jacobian_u_0, u_0, epsilon, num_iter);
         disp(iters);
         if  iters == num_iter % Max iterations -> method has diverged
             lambdas(j) = [];
             break;
         end
 
-        if lambdas(j) - lambdas(1) > low_limit_interval
-            lambda_step = lambda_h_fast;
+        dif_lambda = lambdas(j) - lambdas(1);
+        if dif_lambda > low_limit_interval && ...
+                dif_lambda <= med_limit_interval
+            lambda_step = lambda_h_init_fast;
+            epsilon = small_epsilon;
         end
-        if max_lambda_value - lambdas(j) < upper_limit_interval
-            lambda_step = lambda_h_slow;
+        dif_lambda_end = max_lambda_value - lambdas(j);
+        if dif_lambda > med_limit_interval && ...
+                dif_lambda_end >= upper_limit_interval
+            lambda_step = lambda_h_med;
+        end
+        if dif_lambda_end < upper_limit_interval && ...
+                dif_lambda > med_limit_interval
+            lambda_step = lambda_h_end;
         end
 
         % Next u_0 is from where we finished in our last iteration
         u_0 = nu;
-        u_j(j,:) = nu;
+        % Extend solution for the boundary conditions
+        nu = [0; nu; 0];
+        u(j,:) = nu;
 
         % Generate new lambda based on iterations in last newton execution
         new_lambda = lambdas(j) + lambda_step / iters;
@@ -319,16 +378,17 @@ function [u, bifurcation_values] = compute_branch(h, N, L, t_i, a, a_eval, i, ei
         end
         j = j + 1;
     end
-    u{i} = u_j;
     if degenerate
         extra = '_degenerate';
     else
         extra = '';
     end
-    write_functions_in_file(sprintf('../data/data%s%d.txt', extra, i), u_j);
-    bifurcation_values{i,1} = lambdas;
-    bifurcation_values{i,2} = max(u{i},[],2);
-    write_bifurcation_diag_in_file(sprintf('../data/bifurcation%s%d.txt', extra, i), lambdas, bifurcation_values{i,2});
+    write_functions_in_file(sprintf('../data/data%s%d.txt', extra, i), u);
+    bifurcation_values{1,1} = lambdas;
+    bifurcation_values{1,2} = max(u,[],2);
+    write_bifurcation_diag_in_file(...
+        sprintf('../data/bifurcation%s%d.txt', extra, i), ...
+        lambdas, bifurcation_values{1,2});
 end
 
 function write_functions_in_file(filename, u)
@@ -361,7 +421,8 @@ function write_bifurcation_diag_in_file(filename, lambdas, values)
     end
 end
 
-function [u, bifurcation, err] = load_solutions_eigenvalue(degenerate, eigenvalue)
+function [u, bifurcation, err] = load_solutions_eigenvalue(degenerate, ...
+    eigenvalue)
 % load_solutions_eigenvalue function loads the solutions of a specific
 % eigenvalue given by its index. It will try to find (depending on if we
 % are considering the degenerate case or the classic case) the two files 
@@ -422,8 +483,10 @@ function [u, bifurcation, err] = load_solutions_eigenvalue(degenerate, eigenvalu
             solution_values(1) = [];
             bifurcation_values(1) = [];
             u(size(u, 1) + 1,:) = str2double(solution_values);
-            bifurcation{1}(size(bifurcation{1}, 2) + 1) = str2double(bifurcation_values(1));
-            bifurcation{2}(size(bifurcation{2}, 1) + 1, 1) = str2double(bifurcation_values(2));
+            bifurcation{1}(size(bifurcation{1}, 2) + 1) = ...
+                str2double(bifurcation_values(1));
+            bifurcation{2}(size(bifurcation{2}, 1) + 1, 1) = ...
+                str2double(bifurcation_values(2));
         end
         fclose('all');
     end

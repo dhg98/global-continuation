@@ -1,5 +1,5 @@
 function [result] = trapezoid_integration(f, t_i, h)
-% trapezoidIntegration calculates the approximate defined integral of the a
+% trapezoidIntegration calculates the approximate defined integral of a
 % given function f, using the trapezoid method with subintervals
 % INPUT:
 %   - f: anonymous function for which we want to obtain the integral

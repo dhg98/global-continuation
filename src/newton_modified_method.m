@@ -1,4 +1,8 @@
-function [x,fx,iters] = newton_modified_method(f, jacobian_x_0, x_0, epsilon, numIter)
+function [x, fx, iters] = newton_modified_method(f,...
+    jacobian_x_0, ...
+    x_0, ...
+    epsilon, ...
+    numIter)
 % Newton Method computes the vectorial modified Newton algorithm to obtain 
 % the root of a given function
 %
@@ -6,9 +10,8 @@ function [x,fx,iters] = newton_modified_method(f, jacobian_x_0, x_0, epsilon, nu
 %   - f: anonymous function from which we want to obtain the root
 %   - jacobian_x_0: Jf(x_0) (matrix)
 %   - x_0: initial aproximation of the root (column)
-%   - epsilon: method will halt when ||x_i - x_{i-1}||_2 < epsilon
-%   ||x_{i-1}||_2
-%           and ||f(x_i)||_2 < epsilon
+%   - epsilon: method will halt when ||x_i - x_{i-1}||_Inf < epsilon *
+%           ||x_{i-1}||_2 and ||f(x_i)||_2 < epsilon
 %   - numIter: maximum number of iterations to consider the method has
 %           diverged
 % OUTPUT:
@@ -28,7 +31,8 @@ function [x,fx,iters] = newton_modified_method(f, jacobian_x_0, x_0, epsilon, nu
         fx = f(x1);
         
         % End condition
-        if norm(x1 - x0) < epsilon * norm(x0) && norm(fx) < epsilon
+        if norm(fx, Inf) < epsilon && ...
+            norm(x1 - x0, Inf) < epsilon * norm(x0, Inf)
             break;
         end
         
